@@ -7,7 +7,7 @@ TELEGRAM_BOT_TOKEN = "8713325438:AAECuPaL28575K314wdQC5dTKxn_TLrPo9M"
 TELEGRAM_CHAT_ID = "1619221044"
 
 # BÜTÇE SINIRLARI (TL)
-MIN_BUDGET = 2500  # 2.500 TL altındaki tüm kordon ve kalitesiz ürünleri eler
+MIN_BUDGET = 2500  # 2.500 TL altı tüm ürünleri eler
 MAX_BUDGET = 4000  # En fazla 4.000 TL
 
 # Minimum Değerlendirme Puanı
@@ -53,10 +53,19 @@ MULTI_BUY_KEYWORDS = [
 ]
 
 
-def clean_price(price_str):
-  """Fiyat metnini sayısal değere dönüştürür."""
+def get_item_price(item):
+  """SerpAPI'den veya metinden doğru sayısal fiyatı hatasız çeker."""
+  # SerpAPI'nin hazır sayısal alanını öncelikli kullan (Örn: 2890.0)
+  if "extracted_price" in item and item["extracted_price"]:
+    try:
+      return float(item["extracted_price"])
+    except (ValueError, TypeError):
+      pass
+
+  price_str = item.get("price", "")
   if not price_str:
     return float("inf")
+
   try:
     clean = (
         price_str.replace("₺", "")
@@ -64,10 +73,15 @@ def clean_price(price_str):
         .replace(" ", "")
         .strip()
     )
-    if "," in clean and "." in clean:
+    if "." in clean and "," in clean:
       clean = clean.replace(".", "").replace(",", ".")
-    elif "," in clean:
+    elif "." in clean and "," not in clean:
+      parts = clean.split(".")
+      if len(parts[-1]) == 3:  # Binlik ayırıcı kontrolü (örn: 3.499 -> 3499)
+        clean = "".join(parts)
+    elif "," in clean and "." not in clean:
       clean = clean.replace(",", ".")
+
     return float(clean)
   except Exception:
     return float("inf")
@@ -148,8 +162,8 @@ def search_smartwatches():
       for item in results:
         title = item.get("title", "")
         title_lower = title.lower()
-        price_str = item.get("price", "")
-        price_num = clean_price(price_str)
+        price_num = get_item_price(item)
+        price_str = item.get("price", f"{price_num} TL")
 
         # --- GERÇEK SAAT FİLTRESİ ---
         if not is_actual_smartwatch(title_lower, price_num):
