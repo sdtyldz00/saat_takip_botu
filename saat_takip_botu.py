@@ -9,12 +9,15 @@ TELEGRAM_CHAT_ID = "1619221044"
 # Maksimum Bütçe Sınırı (TL)
 MAX_BUDGET = 4000
 
-# Aratılacak Hedef Aramalar (İkili / Set Fırsatları da Dahil Edildi)
+# Minimum Kullanıcı Değerlendirme Puanı (5 üzerinden)
+MIN_RATING = 4.0
+
+# Aratılacak Hedef Aramalar (Akıllı Saat Odaklı)
 SEARCH_QUERIES = [
-    "yuvarlak çelik kordon akıllı saat",
-    "hasır kordon akıllı saat milanese",
-    "2 li yuvarlak akıllı saat çelik",
-    "fiyat performans yuvarlak akıllı saat çelik",
+    "akıllı saat yuvarlak çelik kordon",
+    "akıllı saat çelik sırma kordon",
+    "akıllı saat milanese kordon yuvarlak",
+    "2 li akıllı saat yuvarlak çelik",
 ]
 
 # Öne Çıkarılan F/P Markaları
@@ -28,6 +31,8 @@ FP_BRANDS = [
     "Mibro",
     "Huawei",
     "Samsung",
+    "HK8",
+    "HK9",
 ]
 
 # İkili Alım ve Kampanya Kelimeleri
@@ -66,17 +71,47 @@ def clean_price(price_str):
     return float("inf")
 
 
+def is_actual_smartwatch(title_lower):
+  """İlanın sadece kordon/aksesuar değil, GERÇEK bir akıllı saat olup olmadığını kontrol eder."""
+  # 1. Başlıkta mutlaka 'akıllı saat' veya 'smartwatch' kelimesi geçmeli
+  has_watch_word = any(
+      w in title_lower for w in ["akıllı saat", "smart watch", "smartwatch"]
+  )
+  if not has_watch_word:
+    return False
+
+  # 2. Aksesuar / Parça belirteçleri geçiyorsa (Örn: "Xiaomi Mi Band 7 İçin Çelik Kordon") doğrudan ELE
+  forbidden_terms = [
+      "kordonu",
+      "kayışı",
+      " için",
+      " uyumlu",
+      " kılıf",
+      " koruyucu",
+      " ekran ",
+      " şarj ",
+      " stand ",
+      " aparat ",
+      " bileklik kordonu",
+      " saat kordonu",
+      " kordon ",
+  ]
+  for term in forbidden_terms:
+    if term in title_lower:
+      return False
+
+  return True
+
+
 def check_multi_buy_deal(item):
   """İlan başlığında veya satıcı uzantılarında ikili alım/indirim kampanyası var mı kontrol eder."""
   title = item.get("title", "").lower()
   extensions = [ext.lower() for ext in item.get("extensions", [])]
 
-  # 1. Başlıkta ikili alım kontrolü
   for kw in MULTI_BUY_KEYWORDS:
     if kw in title:
       return f"🔥 **İKİLİ ALIM / SET FIRSATI** ({kw.upper()})"
 
-  # 2. Satıcı indirim etiketlerinde (extensions) ikili kampanya kontrolü
   for ext in extensions:
     for kw in MULTI_BUY_KEYWORDS:
       if kw in ext:
@@ -110,14 +145,18 @@ def search_smartwatches():
         title = item.get("title", "")
         title_lower = title.lower()
 
-        # Kare/dikdörtgen ve bileklik tarzı modelleri filtrele
+        # --- 1. GERÇEK SAAT FİLTRESİ (Sadece kordon olan ilanları eler) ---
+        if not is_actual_smartwatch(title_lower):
+          continue
+
+        # --- 2. KARE SAAT FİLTRESİ ---
         if any(
             skip in title_lower
             for skip in ["kare", "square", "apple watch", "band"]
         ):
           continue
 
-        # Çelik/hasır/sırma kordon kontrolü
+        # --- 3. ÇELİK / HASIR / SIRMA KORDON FİLTRESİ ---
         if not any(
             k in title_lower
             for k in [
@@ -131,11 +170,18 @@ def search_smartwatches():
         ):
           continue
 
+        # --- 4. BÜTÇE FİLTRESİ ---
         price_str = item.get("price", "")
         price_num = clean_price(price_str)
-
-        # 4.000 TL Üstünü Filtrele
         if price_num > MAX_BUDGET:
+          continue
+
+        # --- 5. KULLANICI DEĞERLENDİRMESİ / PUAN FİLTRESİ ---
+        rating = item.get("rating")
+        reviews = item.get("reviews", 0)
+
+        # Eğer derecelendirme puanı varsa ve 4.0'ın altındaysa KALİTESİZ kabul edip ELE
+        if rating is not None and float(rating) < MIN_RATING:
           continue
 
         if title not in seen_titles:
@@ -151,6 +197,13 @@ def search_smartwatches():
               detected_brand = brand
               break
 
+          # Puan metni oluşturma
+          rating_str = (
+              f"⭐ {rating}/5 ({reviews} Yorum)"
+              if rating
+              else "⭐ Yorum sayısı az / Belirtilmemiş"
+          )
+
           all_items.append({
               "title": title,
               "brand": detected_brand,
@@ -159,15 +212,20 @@ def search_smartwatches():
               "source": source,
               "link": link,
               "multi_deal": multi_deal_info,
+              "rating_num": float(rating) if rating else 0,
+              "rating_str": rating_str,
           })
     except Exception as e:
       print(f"Arama hatası ({query}): {e}")
 
-  # İkili alım/kampanya olanları üste al, sonra fiyata göre sırala
+  # Sıralama Mantığı:
+  # 1. İkili Alım / Fırsat olanlar
+  # 2. Puanı Yüksek Olanlar (Çok satan / Kaliteli)
+  # 3. Fiyatı Uygun Olanlar
   all_items.sort(
-      key=lambda x: (0 if x["multi_deal"] else 1, x["price_num"])
+      key=lambda x: (0 if x["multi_deal"] else 1, -x["rating_num"], x["price_num"])
   )
-  return all_items[:6]  # En uygun ve avantajlı ilk 6 seçeneği al
+  return all_items[:6]
 
 
 def send_telegram_alert(message):
@@ -191,15 +249,15 @@ def run_watch_tracker():
 
   if not watches:
     send_telegram_alert(
-        f"❌ **Saat Botu:** {MAX_BUDGET:,} TL altında kriterlere uygun model"
-        " bulunamadı.".replace(",", ".")
+        f"❌ **Saat Botu:** {MAX_BUDGET:,} TL altında, yüksek puanlı ve kriterlere"
+        " uygun akıllı saat bulunamadı.".replace(",", ".")
     )
     return
 
-  msg = "⌚ **GÜNLÜK FİYAT-PERFORMANS & İKİLİ ALIM SAAT RAPORU**\n"
+  msg = "⌚ **GÜNLÜK KALİTELİ AKILLI SAAT RAPORU**\n"
   msg += (
-      f"🎯 *Kriterler: Yuvarlak Kasalı, Çelik/Hasır Sırma Kordon | Maks. Bütçe:"
-      f" {MAX_BUDGET:,} TL*\n\n".replace(",", ".")
+      f"🎯 *Kriterler: Gerçek Akıllı Saat, Yuvarlak Kasa, Çelik/Hasır Kordon, Min"
+      f" 4.0/5 Puan | Maks {MAX_BUDGET:,} TL*\n\n".replace(",", ".")
   )
 
   for idx, watch in enumerate(watches, 1):
@@ -207,13 +265,14 @@ def run_watch_tracker():
     msg += (
         f"{idx}. 🏷️ **{watch['brand']}** - {watch['title']}{deal_tag}\n"
         f"   💰 **Fiyat:** {watch['price_str']}\n"
+        f"   📊 **Puan:** {watch['rating_str']}\n"
         f"   🏪 **Satıcı:** {watch['source']}\n"
         f"   🔗 [Modeli İncele]({watch['link']})\n"
         f"-----------------------------------\n"
     )
 
   send_telegram_alert(msg)
-  print("✅ İkili alım odaklı akıllı saat raporu Telegram'a gönderildi.")
+  print("✅ Akıllı saat raporu Telegram'a gönderildi.")
 
 
 if __name__ == "__main__":
