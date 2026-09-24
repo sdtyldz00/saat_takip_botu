@@ -6,14 +6,14 @@ SERPAPI_KEY = "7f6be9e1007fd0591fbc030fc268b800a5fbf9d5d307b8fd9d6ea2468d709adb"
 TELEGRAM_BOT_TOKEN = "8713325438:AAECuPaL28575K314wdQC5dTKxn_TLrPo9M"
 TELEGRAM_CHAT_ID = "1619221044"
 
-# Yeni Bütçe Sınırları (TL)
-MIN_BUDGET = 2500  # En az 2.500 TL (Kordon/aksesuar ve kalitesiz saatleri eler)
+# BÜTÇE SINIRLARI (TL)
+MIN_BUDGET = 2500  # 2.500 TL altındaki tüm kordon ve kalitesiz ürünleri eler
 MAX_BUDGET = 4000  # En fazla 4.000 TL
 
 # Minimum Değerlendirme Puanı
 MIN_RATING = 3.8
 
-# Aratılacak Hedef Aramalar (Sadece Yuvarlak Akıllı Saat Odaklı)
+# Aratılacak Hedef Aramalar (Kordon Kelimesi Tamamen Çıkarıldı)
 SEARCH_QUERIES = [
     "yuvarlak akıllı saat",
     "yuvarlak kasa akıllı saat",
@@ -79,7 +79,7 @@ def is_actual_smartwatch(title_lower, price_num):
   if price_num < MIN_BUDGET or price_num > MAX_BUDGET:
     return False
 
-  # 2. Aksesuar Belirteçleri: İçinde 'kordon' veya diğer aksesuar geçen her şeyi ELE
+  # 2. Aksesuar Belirteçleri: Başlığında bu kelimeler geçen her şeyi ELE
   accessory_indicators = [
       "kordon",
       "kayış",
