@@ -6,19 +6,19 @@ SERPAPI_KEY = "7f6be9e1007fd0591fbc030fc268b800a5fbf9d5d307b8fd9d6ea2468d709adb"
 TELEGRAM_BOT_TOKEN = "8713325438:AAECuPaL28575K314wdQC5dTKxn_TLrPo9M"
 TELEGRAM_CHAT_ID = "1619221044"
 
-# Bütçe Sınırları (TL)
-MIN_BUDGET = 800  # Kordon/aksesuar ilanlarını engellemek için alt sınır
-MAX_BUDGET = 4000  # Üst bütçe sınırı
+# Yeni Bütçe Sınırları (TL)
+MIN_BUDGET = 2500  # En az 2.500 TL (Kordon/aksesuar ve kalitesiz saatleri eler)
+MAX_BUDGET = 4000  # En fazla 4.000 TL
 
 # Minimum Değerlendirme Puanı
 MIN_RATING = 3.8
 
-# Aratılacak Hedef Aramalar (Sadece Saat Odaklı)
+# Aratılacak Hedef Aramalar (Sadece Yuvarlak Akıllı Saat Odaklı)
 SEARCH_QUERIES = [
-    "yuvarlak çelik akıllı saat",
-    "yuvarlak metal kasa akıllı saat",
-    "milanese akıllı saat yuvarlak",
-    "fiyat performans akıllı saat yuvarlak çelik",
+    "yuvarlak akıllı saat",
+    "yuvarlak kasa akıllı saat",
+    "fiyat performans yuvarlak akıllı saat",
+    "2 li akıllı saat yuvarlak",
 ]
 
 # Öne Çıkarılan F/P Markaları
@@ -35,6 +35,7 @@ FP_BRANDS = [
     "HK8",
     "HK9",
     "DT NO.1",
+    "Zeblaze",
 ]
 
 # İkili Alım ve Kampanya Kelimeleri
@@ -74,30 +75,30 @@ def clean_price(price_str):
 
 def is_actual_smartwatch(title_lower, price_num):
   """İlanın aksesuar değil GERÇEK BİR AKILLI SAAT olup olmadığını doğrular."""
-  # 1. Fiyat Kontrolü: 800 TL altı ürünler kesinlikle kordon veya aksesuardır
-  if price_num < MIN_BUDGET:
+  # 1. Bütçe Aralığı Kontrolü (2.500 TL - 4.000 TL)
+  if price_num < MIN_BUDGET or price_num > MAX_BUDGET:
     return False
 
-  # 2. Aksesuar Belirteçleri: İlan başlığında bu kelimeler varsa KESİNLİKLE ELE
+  # 2. Aksesuar Belirteçleri: İçinde 'kordon' veya diğer aksesuar geçen her şeyi ELE
   accessory_indicators = [
-      "uyumlu",
-      " için",
-      "kordonu",
-      "kayışı",
+      "kordon",
+      "kayış",
       "kılıf",
       "koruyucu",
       "ekran camı",
       "şarj",
       "stand",
       "aparat",
-      "yedek kordon",
-      "saat kordonu",
+      "uyumlu",
+      " için",
+      "yedek",
+      "bileklik",
   ]
   for term in accessory_indicators:
     if term in title_lower:
       return False
 
-  # 3. İlan başlığında saat ibaresi olduğunu kontrol et
+  # 3. İlan başlığında gerçek akıllı saat ibaresi kontrolü
   if not any(
       w in title_lower for w in ["akıllı saat", "smart watch", "smartwatch"]
   ):
@@ -107,7 +108,7 @@ def is_actual_smartwatch(title_lower, price_num):
 
 
 def check_multi_buy_deal(item):
-  """İlan başlığında veya satıcı uzantılarında ikili alım/indirim kampanyası var mı kontrol eder."""
+  """İkili alım veya kampanya kontrolü yapar."""
   title = item.get("title", "").lower()
   extensions = [ext.lower() for ext in item.get("extensions", [])]
 
@@ -135,7 +136,7 @@ def search_smartwatches():
         "gl": "tr",
         "hl": "tr",
         "location": "Turkey",
-        "sort": "p",  # Fiyata göre artan sırala
+        "sort": "p",
         "api_key": SERPAPI_KEY,
     }
 
@@ -150,19 +151,15 @@ def search_smartwatches():
         price_str = item.get("price", "")
         price_num = clean_price(price_str)
 
-        # --- GERÇEK AKILLI SAAT FİLTRESİ ---
+        # --- GERÇEK SAAT FİLTRESİ ---
         if not is_actual_smartwatch(title_lower, price_num):
           continue
 
-        # --- KARE / BİLEKLİK FİLTRESİ ---
+        # --- KARE / DİKDÖRTGEN SAAT FİLTRESİ ---
         if any(
             skip in title_lower
             for skip in ["kare", "square", "apple watch", "band"]
         ):
-          continue
-
-        # --- BÜTÇE ÜST SINIR FİLTRESİ ---
-        if price_num > MAX_BUDGET:
           continue
 
         # --- KULLANICI PUANI FİLTRESİ ---
@@ -226,20 +223,20 @@ def send_telegram_alert(message):
 
 
 def run_watch_tracker():
-  print("⌚ Yuvarlak & Çelik Sırmalı Akıllı Saat Taraması Başlatılıyor...\n")
+  print("⌚ Yuvarlak Akıllı Saat Taraması Başlatılıyor...\n")
   watches = search_smartwatches()
 
   if not watches:
     send_telegram_alert(
-        f"❌ **Saat Botu:** {MIN_BUDGET} TL - {MAX_BUDGET:,} TL arasında"
+        f"❌ **Saat Botu:** {MIN_BUDGET:,} TL - {MAX_BUDGET:,} TL arasında"
         " kriterlere uygun kaliteli akıllı saat bulunamadı.".replace(",", ".")
     )
     return
 
-  msg = "⌚ **GÜNLÜK KALİTELİ AKILLI SAAT RAPORU**\n"
+  msg = "⌚ **GÜNLÜK AKILLI SAAT RAPORU**\n"
   msg += (
-      f"🎯 *Kriterler: Gerçek Akıllı Saat, Yuvarlak Kasa, Çelik/Metal Kordon |"
-      f" Bütçe: {MIN_BUDGET} TL - {MAX_BUDGET:,} TL*\n\n".replace(",", ".")
+      f"🎯 *Kriterler: Gerçek Akıllı Saat, Yuvarlak Kasa | Bütçe: {MIN_BUDGET:,}"
+      f" TL - {MAX_BUDGET:,} TL*\n\n".replace(",", ".")
   )
 
   for idx, watch in enumerate(watches, 1):
